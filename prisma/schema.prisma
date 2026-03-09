@@ -1,0 +1,359 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  BREEDER
+  PUBLIC
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum LitterStatus {
+  PLANNED
+  WHELPED
+  REGISTERED
+}
+
+enum HealthTestResult {
+  PASS
+  FAIL
+  CARRIER
+  CLEAR
+  AFFECTED
+  INCONCLUSIVE
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(uuid()) @db.Uuid
+  email             String    @unique @db.VarChar(255)
+  passwordHash      String    @map("password_hash") @db.VarChar(255)
+  role              UserRole  @default(PUBLIC)
+  firstName         String?   @map("first_name") @db.VarChar(100)
+  lastName          String?   @map("last_name") @db.VarChar(100)
+  phone             String?   @db.VarChar(30)
+  isEmailVerified   Boolean   @default(false) @map("is_email_verified")
+  emailVerifiedAt   DateTime? @map("email_verified_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  breeder               Breeder?
+  refreshTokens         RefreshToken[]
+  reviewedRegistrations Registration[] @relation("ReviewedBy")
+
+  @@index([email])
+  @@map("users")
+}
+
+// ─── Refresh Tokens ───────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  token     String    @unique @db.VarChar(512)
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ─── Kennels ──────────────────────────────────────────────────────────────────
+
+model Kennel {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(150)
+  slug        String   @unique @db.VarChar(160)
+  prefix      String?  @db.VarChar(50)
+  description String?  @db.Text
+  established Int?
+  country     String?  @db.Char(2)
+  region      String?  @db.VarChar(100)
+  city        String?  @db.VarChar(100)
+  website     String?  @db.VarChar(255)
+  email       String?  @db.VarChar(255)
+  phone       String?  @db.VarChar(30)
+  logoUrl     String?  @map("logo_url") @db.VarChar(512)
+  bannerUrl   String?  @map("banner_url") @db.VarChar(512)
+  isVerified  Boolean  @default(false) @map("is_verified")
+  isPublic    Boolean  @default(true) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  members   KennelMember[]
+  bredDogs  Dog[]          @relation("BredByKennel")
+  ownedDogs Dog[]          @relation("OwnedByKennel")
+  litters   Litter[]
+
+  @@index([slug])
+  @@index([country, isPublic])
+  @@map("kennels")
+}
+
+// ─── Breeders ─────────────────────────────────────────────────────────────────
+
+model Breeder {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  displayName String   @db.VarChar(150)
+  slug        String   @unique @db.VarChar(160)
+  bio         String?  @db.Text
+  country     String?  @db.Char(2)
+  region      String?  @db.VarChar(100)
+  city        String?  @db.VarChar(100)
+  website     String?  @db.VarChar(255)
+  avatarUrl   String?  @map("avatar_url") @db.VarChar(512)
+  isVerified  Boolean  @default(false) @map("is_verified")
+  isPublic    Boolean  @default(true) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kennelMemberships KennelMember[]
+  bredDogs          Dog[]          @relation("BredByBreeder")
+  ownedDogs         Dog[]          @relation("OwnedByBreeder")
+  registrations     Registration[]
+
+  @@index([slug])
+  @@index([userId])
+  @@map("breeders")
+}
+
+// ─── Kennel Members ───────────────────────────────────────────────────────────
+
+model KennelMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  kennelId  String   @map("kennel_id") @db.Uuid
+  breederId String   @map("breeder_id") @db.Uuid
+  role      String   @default("MEMBER") @db.VarChar(50)
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  kennel  Kennel  @relation(fields: [kennelId], references: [id], onDelete: Cascade)
+  breeder Breeder @relation(fields: [breederId], references: [id], onDelete: Cascade)
+
+  @@unique([kennelId, breederId])
+  @@map("kennel_members")
+}
+
+// ─── Dogs ─────────────────────────────────────────────────────────────────────
+
+model Dog {
+  id               String    @id @default(uuid()) @db.Uuid
+  regNumber        String?   @unique @map("reg_number") @db.VarChar(100)
+  name             String    @db.VarChar(200)
+  slug             String    @unique @db.VarChar(220)
+  callName         String?   @map("call_name") @db.VarChar(100)
+  breed            String    @db.VarChar(100)
+  sex              Sex
+  dob              DateTime? @db.Date
+  dod              DateTime? @db.Date
+  color            String?   @db.VarChar(100)
+  weightLbs        Decimal?  @map("weight_lbs") @db.Decimal(5, 2)
+  weightKg         Decimal?  @map("weight_kg") @db.Decimal(5, 2)
+  titles           String[]  @default([])
+  country          String?   @db.Char(2)
+  about            String?   @db.Text
+  profileImageUrl  String?   @map("profile_image_url") @db.VarChar(512)
+  isPublic         Boolean   @default(true) @map("is_public")
+  isApproved       Boolean   @default(false) @map("is_approved")
+
+  // Self-referential pedigree links
+  sireId           String?   @map("sire_id") @db.Uuid
+  damId            String?   @map("dam_id") @db.Uuid
+  sire             Dog?      @relation("SireOffspring", fields: [sireId], references: [id], onDelete: SetNull)
+  dam              Dog?      @relation("DamOffspring", fields: [damId], references: [id], onDelete: SetNull)
+  sireOffspring    Dog[]     @relation("SireOffspring")
+  damOffspring     Dog[]     @relation("DamOffspring")
+
+  // Ownership (breeder or kennel)
+  ownerBreederId   String?   @map("owner_breeder_id") @db.Uuid
+  ownerKennelId    String?   @map("owner_kennel_id") @db.Uuid
+  breederBreederId String?   @map("breeder_breeder_id") @db.Uuid
+  breederKennelId  String?   @map("breeder_kennel_id") @db.Uuid
+  ownerBreeder     Breeder?  @relation("OwnedByBreeder", fields: [ownerBreederId], references: [id], onDelete: SetNull)
+  ownerKennel      Kennel?   @relation("OwnedByKennel", fields: [ownerKennelId], references: [id], onDelete: SetNull)
+  breederBreeder   Breeder?  @relation("BredByBreeder", fields: [breederBreederId], references: [id], onDelete: SetNull)
+  breederKennel    Kennel?   @relation("BredByKennel", fields: [breederKennelId], references: [id], onDelete: SetNull)
+
+  // Litter this dog belongs to
+  litterId         String?   @map("litter_id") @db.Uuid
+  litter           Litter?   @relation("LitterPups", fields: [litterId], references: [id], onDelete: SetNull)
+
+  // COI cache — computed asynchronously
+  coi4gen          Decimal?  @map("coi_4gen") @db.Decimal(8, 6)
+  coi6gen          Decimal?  @map("coi_6gen") @db.Decimal(8, 6)
+  coi8gen          Decimal?  @map("coi_8gen") @db.Decimal(8, 6)
+  coi10gen         Decimal?  @map("coi_10gen") @db.Decimal(8, 6)
+  coiUpdatedAt     DateTime? @map("coi_updated_at")
+
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  images        DogImage[]
+  pedigree      Pedigree?
+  registrations Registration[]
+  healthRecords HealthRecord[]
+  siredLitters  Litter[]       @relation("SiredBy")
+  whelpedinLitters Litter[]    @relation("DamOf")
+
+  @@index([sireId])
+  @@index([damId])
+  @@index([slug])
+  @@index([ownerBreederId])
+  @@index([ownerKennelId])
+  @@index([breed])
+  @@index([regNumber])
+  @@index([isPublic, isApproved])
+  @@map("dogs")
+}
+
+// ─── Dog Images ───────────────────────────────────────────────────────────────
+
+model DogImage {
+  id           String   @id @default(uuid()) @db.Uuid
+  dogId        String   @map("dog_id") @db.Uuid
+  url          String   @db.VarChar(512)
+  s3Key        String   @map("s3_key") @db.VarChar(512)
+  thumbnailUrl String?  @map("thumbnail_url") @db.VarChar(512)
+  mediumUrl    String?  @map("medium_url") @db.VarChar(512)
+  caption      String?  @db.VarChar(255)
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  mimeType     String?  @map("mime_type") @db.VarChar(50)
+  sizeBytes    Int?     @map("size_bytes")
+  width        Int?
+  height       Int?
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
+
+  @@index([dogId, isPrimary])
+  @@map("dog_images")
+}
+
+// ─── Pedigrees ────────────────────────────────────────────────────────────────
+
+model Pedigree {
+  id             String   @id @default(uuid()) @db.Uuid
+  dogId          String   @unique @map("dog_id") @db.Uuid
+  generations    Int      @default(4)
+  treeJson       Json     @map("tree_json")
+  ancestorCount  Int      @default(0) @map("ancestor_count")
+  uniqueAncestors Int     @default(0) @map("unique_ancestors")
+  coi4gen        Decimal? @map("coi_4gen") @db.Decimal(8, 6)
+  coi6gen        Decimal? @map("coi_6gen") @db.Decimal(8, 6)
+  coi8gen        Decimal? @map("coi_8gen") @db.Decimal(8, 6)
+  coi10gen       Decimal? @map("coi_10gen") @db.Decimal(8, 6)
+  builtAt        DateTime @default(now()) @map("built_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
+
+  @@index([dogId])
+  @@map("pedigrees")
+}
+
+// ─── Litters ──────────────────────────────────────────────────────────────────
+
+model Litter {
+  id         String       @id @default(uuid()) @db.Uuid
+  sireId     String       @map("sire_id") @db.Uuid
+  damId      String       @map("dam_id") @db.Uuid
+  kennelId   String?      @map("kennel_id") @db.Uuid
+  whelpDate  DateTime?    @map("whelp_date") @db.Date
+  numMales   Int          @default(0) @map("num_males")
+  numFemales Int          @default(0) @map("num_females")
+  numTotal   Int          @default(0) @map("num_total")
+  status     LitterStatus @default(WHELPED)
+  notes      String?      @db.Text
+  isPublic   Boolean      @default(true) @map("is_public")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  sire   Dog     @relation("SiredBy", fields: [sireId], references: [id])
+  dam    Dog     @relation("DamOf", fields: [damId], references: [id])
+  kennel Kennel? @relation(fields: [kennelId], references: [id], onDelete: SetNull)
+  pups   Dog[]   @relation("LitterPups")
+
+  @@index([sireId])
+  @@index([damId])
+  @@index([kennelId])
+  @@map("litters")
+}
+
+// ─── Registrations ────────────────────────────────────────────────────────────
+
+model Registration {
+  id            String             @id @default(uuid()) @db.Uuid
+  dogId         String             @map("dog_id") @db.Uuid
+  breederId     String?            @map("breeder_id") @db.Uuid
+  registryName  String             @map("registry_name") @db.VarChar(100)
+  regNumber     String             @map("reg_number") @db.VarChar(100)
+  regDate       DateTime?          @map("reg_date") @db.Date
+  expiresDate   DateTime?          @map("expires_date") @db.Date
+  documentUrl   String?            @map("document_url") @db.VarChar(512)
+  s3Key         String?            @map("s3_key") @db.VarChar(512)
+  status        RegistrationStatus @default(PENDING)
+  reviewedById  String?            @map("reviewed_by_id") @db.Uuid
+  reviewedAt    DateTime?          @map("reviewed_at")
+  rejectionNote String?            @map("rejection_note") @db.Text
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  dog        Dog      @relation(fields: [dogId], references: [id], onDelete: Cascade)
+  breeder    Breeder? @relation(fields: [breederId], references: [id], onDelete: SetNull)
+  reviewedBy User?    @relation("ReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([dogId, registryName, regNumber])
+  @@index([dogId])
+  @@index([status])
+  @@map("registrations")
+}
+
+// ─── Health Records ───────────────────────────────────────────────────────────
+
+model HealthRecord {
+  id             String           @id @default(uuid()) @db.Uuid
+  dogId          String           @map("dog_id") @db.Uuid
+  testType       String           @map("test_type") @db.VarChar(100)
+  result         HealthTestResult
+  resultDetail   String?          @map("result_detail") @db.VarChar(255)
+  testedDate     DateTime?        @map("tested_date") @db.Date
+  labName        String?          @map("lab_name") @db.VarChar(150)
+  certNumber     String?          @map("cert_number") @db.VarChar(100)
+  certificateUrl String?          @map("certificate_url") @db.VarChar(512)
+  s3Key          String?          @map("s3_key") @db.VarChar(512)
+  isPublic       Boolean          @default(true) @map("is_public")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  dog Dog @relation(fields: [dogId], references: [id], onDelete: Cascade)
+
+  @@index([dogId])
+  @@index([testType])
+  @@map("health_records")
+}
