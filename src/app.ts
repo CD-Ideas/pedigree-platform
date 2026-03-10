@@ -21,6 +21,14 @@ import { logger }             from './lib/logger';
 
 const app = express();
 
+app.get('/', (_req, res) => {
+  res.json({
+    name: "TrueMark Registry API",
+    status: "running",
+    version: "v1"
+  });
+});
+
 // ─── Security & Parsing ────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
