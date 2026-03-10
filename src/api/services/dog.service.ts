@@ -9,6 +9,7 @@ const DOG_PUBLIC_SELECT = {
   breed: true, sex: true, dob: true, dod: true, color: true,
   weightLbs: true, weightKg: true, titles: true, country: true, about: true,
   profileImageUrl: true, coi4gen: true, coi6gen: true, coi10gen: true,
+  isPublic: true,
   sireId: true, damId: true,
   sire: { select: { id: true, name: true, slug: true, regNumber: true } },
   dam:  { select: { id: true, name: true, slug: true, regNumber: true } },
